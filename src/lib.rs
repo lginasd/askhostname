@@ -101,26 +101,29 @@ pub fn ask(addr: &str) -> Result<String, QuerryError> {
 
     // println!("Recived\n\n {:x?}", buff);
 
-    // TODO: better parsing
-    let (_, response) = buff.split_at(54);
-    // apparently not needed
-    // let data_size: u16 = ((response[0] as u16) << 8) + response[1] as u16;
-    // let names_count: u8 = response[2];
+    // response contain request + time to live [0u8; 4] + answer
+    // the next two bytes correspond to the answer size, followed by a one byte count of names
+    // next chunks of 18 bytes represent name [u8; 16] + permanent node flags [u8; 2]
+    // other data is ignored
+    let (_, response) = buff.split_at(NdnsRequest::SIZE + 4);
+    let data_size: u16 = ((response[0] as u16) << 8) + response[1] as u16;
+    let names_count: u8 = response[2];
 
-    let idx = match response.windows(2).position(|window| window == [0x84, 0x00])
-    {
-        Some(i) => i,
-        None => { return Err(QuerryError::InvalidResponse);}
+    let mut names = Vec::new();
+    for chunk in response[3..data_size as usize].chunks(18).take(names_count as usize) {
+        // [NAME + OPTIONAL_PADDING(0x20)]: [u8; 16] + FLAGS [u8; 2] on each 16 bytes chunk
+        let name: String = chunk[..15].iter()
+            .filter_map(|b| {
+            if b.is_ascii_alphanumeric() || b.is_ascii_punctuation() { Some(*b as char) }
+            else { None }
+        }).collect();
+
+        names.push(name)
     };
-    let (raw_name, _) = response.split_at(idx);
+    if names.is_empty() { return Err(QuerryError::InvalidResponse) };
+    // println!("Debug: names is {:?}", names);
 
-    let name = raw_name[3..].iter()
-        .map_while(|b| {
-            if b.is_ascii_alphanumeric() || b.is_ascii_punctuation() {
-                Some(b)
-            } else { None }
-        })
-        .fold(String::new(), |mut acc, b| { acc.push(*b as char); acc });
-
-    Ok(name)
+    // For now return only first name, as it's the most reliable. Maybe return all later, if output
+    // should be verbose
+    Ok(names.get(0).unwrap().to_string())
 }
