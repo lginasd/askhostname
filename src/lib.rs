@@ -1,7 +1,6 @@
-mod nbns;
-mod mdns;
-use nbns::NbnsRequest;
-use mdns::MdnsQuerry;
+mod net;
+use net::nbns::NbnsRequest;
+use net::mdns::MdnsQuerry;
 
 #[derive(Debug)]
 pub enum QuerryError {
