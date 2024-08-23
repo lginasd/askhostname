@@ -1,5 +1,7 @@
 mod nbns;
+mod mdns;
 use nbns::NbnsRequest;
+use mdns::MdnsQuerry;
 
 #[derive(Debug)]
 pub enum QuerryError {
@@ -21,5 +23,6 @@ impl std::fmt::Display for QuerryError {
 }
 
 pub fn ask(addr: &str) -> Result<String, QuerryError> {
-    NbnsRequest::send(addr)
+    // NbnsRequest::send(addr)
+    MdnsQuerry::send(addr)
 }

@@ -48,7 +48,7 @@ impl NbnsRequest {
     }
     pub fn as_slice(&self) -> &[u8; Self::SIZE] {
         unsafe {
-            &*(self as *const NbnsRequest as *const [u8; Self::SIZE])
+            &*(self as *const Self as *const [u8; Self::SIZE])
         }
     }
 
