@@ -1,5 +1,5 @@
 use clap::Parser;
-use askhostname::ask;
+use askhostname::run;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -10,10 +10,12 @@ struct Args {
 fn main() -> std::process::ExitCode {
     let args = Args::parse();
 
-    let res = ask(&args.target);
+    let res = run(&args.target);
     match res {
         Ok(hostname) => {
-            println!("{}: {}", &args.target, hostname);
+            if hostname.is_some() {
+                println!("{}: {}", &args.target, hostname.unwrap());
+            };
             std::process::ExitCode::SUCCESS
         }
         Err(e) => {
