@@ -2,7 +2,7 @@ pub mod nbns;
 pub mod mdns;
 use std::net::SocketAddr;
 use socket2::{Socket, Domain, Type, Protocol};
-use crate::QuerryError;
+use crate::QueryError;
 
 
 pub const TIMEOUT_MS: std::time::Duration = std::time::Duration::from_millis(1500);
@@ -47,20 +47,20 @@ impl DnsHeader {
     }
 }
 
-fn querry(addr: &str, port: u16, request: &[u8]) -> Result<Vec<u8>, QuerryError> {
+fn query(addr: &str, port: u16, request: &[u8]) -> Result<Vec<u8>, QueryError> {
     let sock = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).expect("Failed to create socket");
 
     let remote: SocketAddr = match format!("{}:{}", addr, port).parse() {
         Ok(a) => a,
         Err(e) => {
             eprintln!("Failed to parse target IP: {e}");
-            return Err(QuerryError::ParseAddress);
+            return Err(QueryError::ParseAddress);
         }
     };
 
     if let Err(err) = sock.send_to(request, &remote.into()) {
         eprintln!("Failed to send request {}", err);
-        return Err(QuerryError::Network);
+        return Err(QueryError::Network);
     }
 
     sock.connect(&remote.into()).expect("Failed to initiate the connection");
@@ -71,7 +71,7 @@ fn querry(addr: &str, port: u16, request: &[u8]) -> Result<Vec<u8>, QuerryError>
 
     if let Err(e) = sock.recv_from(&mut tmp_buff) {
         eprintln!("Failed to recive message: {}", e);
-        return Err(QuerryError::NoAnswer);
+        return Err(QueryError::NoAnswer);
     };
 
     // tmp_buff is always initialized

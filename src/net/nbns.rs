@@ -3,9 +3,9 @@
 
 use std::net::SocketAddr;
 use socket2::{Socket, Domain, Type, Protocol};
-use crate::QuerryError;
+use crate::QueryError;
 use crate::net::DnsHeader;
-use crate::net::querry;
+use crate::net::query;
 
 #[repr(C)]
 pub struct NbnsRequest {
@@ -42,11 +42,11 @@ impl NbnsRequest {
         }
     }
 
-    pub fn send(addr: &str) -> Result<String, QuerryError> {
+    pub fn send(addr: &str) -> Result<String, QueryError> {
 
         let request = Self::new();
 
-        let buff = querry(addr, Self::PORT, request.as_slice())?;
+        let buff = query(addr, Self::PORT, request.as_slice())?;
 
         // println!("Recived\n\n {:x?}", buff);
 
@@ -69,7 +69,7 @@ impl NbnsRequest {
 
             names.push(name)
         };
-        if names.is_empty() { return Err(QuerryError::InvalidResponse) };
+        if names.is_empty() { return Err(QueryError::InvalidResponse) };
         // println!("Debug: names is {:?}", names);
 
         // For now return only first name, as it's the most reliable. Maybe return all later, if output

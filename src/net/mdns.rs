@@ -3,24 +3,22 @@
 
 use std::net::{SocketAddr, IpAddr};
 use socket2::{Socket, Domain, Type, Protocol};
-use crate::QuerryError;
+use crate::QueryError;
 use crate::net::DnsHeader;
-use crate::net::querry;
+use crate::net::query;
 
 #[repr(C)]
-pub struct MdnsQuerry {
+pub struct MdnsQuery {
     header: DnsHeader,
 
-    // qname: [u8; 28],
     qname: Vec<u8>, // is dynamic size
     qtype: u16,
-    qclass: u16 // first bit is UNICAST-RESPONSE flag for QU (querry unicast), which desires
+    qclass: u16 // first bit is UNICAST-RESPONSE flag for QU (query unicast), which desires
                 // unicast respose back to the host
 }
-// Unicast direct reverse DNS lookup querry with unicast response directly to the host
-impl MdnsQuerry {
+// Unicast direct reverse DNS lookup query with unicast response directly to the host
+impl MdnsQuery {
     pub const PORT: u16 = 5353;
-    pub const SIZE: usize = std::mem::size_of::<MdnsQuerry>();
 
     fn new(ip: IpAddr) -> Self {
         let mut question = vec![];
@@ -44,22 +42,7 @@ impl MdnsQuerry {
         "arpa".chars().for_each(|c| question.push(c as u8));
         question.push(0);
 
-        // question[14] = 7;
-        // question[15] = 0x69;
-        // question[16] = 0x6e;
-        // question[17] = 0x2d;
-        // question[18] = 0x61;
-        // question[19] = 0x64;
-        // question[20] = 0x64;
-        // question[21] = 0x72;
-        // question[22] = 4;
-        // question[23] = 0x61;
-        // question[24] = 0x72;
-        // question[25] = 0x70;
-        // question[26] = 0x61;
-        // question[27] = 0;
-
-        MdnsQuerry {
+        MdnsQuery {
             header: DnsHeader::new_mdns(),
 
             qname: question,
@@ -87,14 +70,14 @@ impl MdnsQuerry {
         tmp_vec
     }
 
-    pub fn send(addr: &str) -> Result<String, QuerryError> {
+    pub fn send(addr: &str) -> Result<String, QueryError> {
 
         // let ip: SocketAddr = format!("{}:0", addr).parse().unwrap();
         // let ip = ip.ip();
         let ip = addr.parse().expect("Ip parse failed. MDNS send");
         let request = Self::new(ip).message();
 
-        let buff = querry(addr, Self::PORT, &request)?;
+        let buff = query(addr, Self::PORT, &request)?;
 
         // response contain request + time to live [0u8; 4] + answer
         // the next two bytes correspond to the answer size
@@ -126,6 +109,5 @@ impl MdnsQuerry {
         // println!("Recived\n\n {:x?}", buff);
 
         Ok(name)
-
     }
 }
