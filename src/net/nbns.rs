@@ -41,7 +41,7 @@ impl NbnsQuery {
         }
     }
 
-    pub fn send(addr: IpAddr) -> Result<Option<String>, QueryError> {
+    pub fn send(addr: IpAddr) -> Result<Option<Vec<NbnsAnswer>>, QueryError> {
 
         let request = Self::new();
 
@@ -62,19 +62,41 @@ impl NbnsQuery {
         let mut names = Vec::new();
         for chunk in response[3..data_size as usize].chunks(18).take(names_count as usize) {
             // [NAME + OPTIONAL_PADDING(0x20)]: [u8; 16] + FLAGS [u8; 2] on each 18 bytes chunk
-            let name: String = chunk[..15].iter()
+            let name: String = chunk[..=15].iter()
                 .filter_map(|b| {
                     if b.is_ascii_alphanumeric() || b.is_ascii_punctuation() { Some(*b as char) }
                     else { None }
                 }).collect();
+            let flags = chunk[16]; // chunk[17] is reserved and always should be zero
 
-            names.push(name)
+            names.push(match flags {
+                f if f & 0x01 != 0 => NbnsAnswer::Permanent(name),
+                f if f & 0x80 != 0 => NbnsAnswer::Group(name),
+                _ => NbnsAnswer::Unique(name),
+            })
         };
         if names.is_empty() { return Err(QueryError::InvalidResponse) };
         // println!("Debug: names is {:?}", names);
 
         // For now return only first name, as it's the most reliable. Maybe return all later, if output
         // should be verbose
-        Ok(Some(names.first().unwrap().to_string()))
+        Ok(Some(names))
+    }
+}
+
+pub enum NbnsAnswer {
+    Group(String),
+    Unique(String),
+    Permanent(String),
+    None,
+}
+impl std::fmt::Display for NbnsAnswer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            NbnsAnswer::Group(s) => { write!(f, "{} (Group)", s) },
+            NbnsAnswer::Unique(s) => { write!(f, "{}", s) },
+            NbnsAnswer::Permanent(s) => { write!(f, "{} (Permanent name)", s) },
+            NbnsAnswer::None => { write!(f, "") },
+        }
     }
 }

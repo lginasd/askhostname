@@ -10,17 +10,11 @@ struct Args {
 fn main() -> std::process::ExitCode {
     let args = Args::parse();
 
-    let res = run(&args.target);
-    match res {
-        Ok(hostname) => {
-            if hostname.is_some() {
-                println!("{}: {}", &args.target, hostname.unwrap());
-            };
-            std::process::ExitCode::SUCCESS
-        }
+    match run(&args.target) {
+        Ok(_) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("Failed to get hostname: {}", e);
-            std::process::ExitCode::FAILURE
-        }
+            eprintln!("askhostname: {}", e);
+            return std::process::ExitCode::FAILURE;
+        },
     }
 }
