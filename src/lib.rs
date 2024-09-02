@@ -6,7 +6,6 @@ use net::mdns::MdnsQuery;
 pub enum QueryError {
     ParseAddress,
     Network,
-    // NoAnswer,
     InvalidResponse,
 }
 impl std::error::Error for QueryError {}
@@ -15,7 +14,6 @@ impl std::fmt::Display for QueryError {
         write!(f, "query error {}", match self {
             QueryError::ParseAddress => "ParseAddress",
             QueryError::Network => "Network",
-            // QueryError::NoAnswer => "NoAnswer",
             QueryError::InvalidResponse => "InvalidResponse"
         })
     }
