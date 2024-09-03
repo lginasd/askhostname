@@ -40,34 +40,35 @@ impl QueryResult {
     fn is_empty(&self) -> bool {
         self.host_names.is_empty() && self.domain_name.is_empty()
     }
-    fn table_row(&self) -> String {
-        if self.is_empty() { return "".to_string() };
 
-        format!("{:<ip_width$} {:<hostname_width$} {:<domain_name_width$}",
-            self.ip_addr,
-            self.host_names.first().unwrap_or(&net::nbns::NbnsAnswer::None).to_string(),
-            self.domain_name,
+    // Different padding is needed for IPv4 and IPv6
+    fn format_row<A, B, C>(a: A, b: B, c: C, is_ipv6: bool) -> String
+    where A: std::fmt::Display, B: std::fmt::Display, C: std::fmt::Display
+    {
+        format!(
+            "{:<ip_width$} {:<hostname_width$} {:<domain_name_width$}",
+            a, b, c,
 
-            ip_width = match self.ip_addr {
-                std::net::IpAddr::V4(_) => Self::PADDING_IP4,
-                std::net::IpAddr::V6(_) => Self::PADDING_IP6,
+            ip_width = match is_ipv6 {
+                false => Self::PADDING_IP4,
+                true  => Self::PADDING_IP6,
             },
             hostname_width = Self::PADDING_HOSTNAME,
             domain_name_width = Self::PADDING_DOMAIN_NAME,
         )
     }
-    // different padding needed for IPv6 address
-    fn table_head(addr: std::net::IpAddr) -> String {
-        format!("{:<ip_width$} {:<hostname_width$} {:<domain_name_width$}",
-            "IP address", "Hostname", "Domain name",
+    fn table_row(&self) -> String {
+        if self.is_empty() { return "".to_string() };
 
-            ip_width = match addr {
-                std::net::IpAddr::V4(_) => Self::PADDING_IP4,
-                std::net::IpAddr::V6(_) => Self::PADDING_IP6,
-            },
-            hostname_width = Self::PADDING_HOSTNAME,
-            domain_name_width = Self::PADDING_DOMAIN_NAME,
+        Self::format_row(
+            &self.ip_addr,
+            &self.host_names.first().unwrap_or(&net::nbns::NbnsAnswer::None).to_string(),
+            &self.domain_name,
+            self.ip_addr.is_ipv6(),
         )
+    }
+    fn table_head(addr: &std::net::IpAddr) -> String {
+        Self::format_row("IP address", "Hostname", "Domain name", addr.is_ipv6())
     }
 }
 
@@ -77,7 +78,7 @@ pub fn run(addr: &str) -> Result<(), QueryError> {
 
     let res = query(addr)?;
 
-    println!("{}", QueryResult::table_head(addr));
+    println!("{}", QueryResult::table_head(&addr));
 
     println!("{}", res.table_row());
 
