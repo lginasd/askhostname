@@ -1,10 +1,13 @@
 mod net;
 use net::nbns::{NbnsQuery, NbnsAnswer};
 use net::mdns::MdnsQuery;
+extern crate ipnet;
+use ipnet::Ipv4Net;
 
 #[derive(Debug)]
 pub enum QueryError {
     ParseAddress,
+    ParseAddressesRange,
     Network,
     InvalidResponse,
 }
@@ -13,8 +16,9 @@ impl std::fmt::Display for QueryError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "query error {}", match self {
             QueryError::ParseAddress => "ParseAddress",
+            QueryError::ParseAddressesRange => "ParseAddressesRange",
             QueryError::Network => "Network",
-            QueryError::InvalidResponse => "InvalidResponse"
+            QueryError::InvalidResponse => "InvalidResponse",
         })
     }
 }
@@ -58,7 +62,7 @@ impl QueryResult {
         )
     }
     fn table_row(&self) -> String {
-        if self.is_empty() { return "".to_string() };
+        assert!(!self.is_empty());
 
         Self::format_row(
             &self.ip_addr,
@@ -73,15 +77,22 @@ impl QueryResult {
 }
 
 pub fn run(addr: &str) -> Result<(), QueryError> {
+    if addr.contains('/') {
+        let range: Ipv4Net = addr.parse().map_err(|_| QueryError::ParseAddressesRange)?;
 
-    let addr: std::net::IpAddr = addr.parse().map_err(|_| QueryError::ParseAddress)?;
+        println!("{}", QueryResult::table_head(&range.addr().into()));
 
-    let res = query(addr)?;
+        for addr in range.hosts() {
+            query(addr.into())?;
+        };
 
-    println!("{}", QueryResult::table_head(&addr));
+    } else {
+        let addr: std::net::IpAddr = addr.parse().map_err(|_| QueryError::ParseAddress)?;
 
-    println!("{}", res.table_row());
+        query(addr)?;
 
+        println!("{}", QueryResult::table_head(&addr));
+    }
     Ok(())
 }
 
@@ -102,6 +113,10 @@ fn query(addr: std::net::IpAddr) -> Result<QueryResult, QueryError> {
     if let Some(ans) = MdnsQuery::send(addr)? {
         result.domain_name = ans;
     };
+
+    if !result.is_empty() {
+        println!("{}", result.table_row());
+    }
 
     Ok(result)
 }
