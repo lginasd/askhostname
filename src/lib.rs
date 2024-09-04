@@ -1,8 +1,29 @@
+use std::sync::{Arc, Mutex};
 mod net;
-use net::nbns::{NbnsQuery, NbnsAnswer};
+use net::QueryResult;
+use net::nbns::NbnsQuery;
 use net::mdns::MdnsQuery;
-extern crate ipnet;
 use ipnet::Ipv4Net;
+use clap::Parser;
+
+#[derive(Parser, Clone)]
+#[command(version, about, long_about = None)]
+pub struct Args {
+    /// Target to ask hostname (can be range with CIDR notation)
+    target: String,
+
+    /// Verbose output
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Quieter output
+    #[arg(short, long)]
+    quiet: bool,
+
+    /// Wait for all answers, and then print them at once
+    #[arg(short, long)]
+    wait: bool,
+}
 
 #[derive(Debug)]
 pub enum QueryError {
@@ -23,100 +44,96 @@ impl std::fmt::Display for QueryError {
     }
 }
 
-struct QueryResult {
-    ip_addr: std::net::IpAddr,
-    host_names: Vec<NbnsAnswer>,
-    domain_name: String
+#[derive(Clone)]
+struct App {
+    args: Args,
+    output_buffer: Arc<Mutex<String>>, // If shouldn't print immediately
 }
-impl QueryResult {
-    const PADDING_IP4: usize = 16;
-    const PADDING_IP6: usize = 36;
-    const PADDING_HOSTNAME: usize = 16;
-    const PADDING_DOMAIN_NAME: usize = 20;
-
-    fn new(ip_addr: std::net::IpAddr) -> Self {
-        QueryResult {
-            ip_addr,
-            host_names: Vec::new(),
-            domain_name: String::new()
+impl App {
+    fn new(args: Args) -> Self {
+        App {
+            args,
+            output_buffer: Arc::new(Mutex::new(String::new())),
         }
     }
-    fn is_empty(&self) -> bool {
-        self.host_names.is_empty() && self.domain_name.is_empty()
+    fn target(&self) -> &str {
+        &self.args.target
+    }
+    fn write(&mut self, s: &str) {
+        if self.args.wait {
+            let mut b = self.output_buffer.lock().unwrap();
+            b.push_str(s);
+            b.push('\n'); // not very cross-platform
+        } else {
+            println!("{}", s);
+        }
+    }
+    fn outbuff(&self) {
+        if self.args.wait {
+            println!("{}", &self.output_buffer.lock().unwrap());
+        }
     }
 
-    // Different padding is needed for IPv4 and IPv6
-    fn format_row<A, B, C>(a: A, b: B, c: C, is_ipv6: bool) -> String
-    where A: std::fmt::Display, B: std::fmt::Display, C: std::fmt::Display
-    {
-        format!(
-            "{:<ip_width$} {:<hostname_width$} {:<domain_name_width$}",
-            a, b, c,
+    fn ask(&mut self, addr: std::net::IpAddr) -> Result<(), QueryError> {
 
-            ip_width = match is_ipv6 {
-                false => Self::PADDING_IP4,
-                true  => Self::PADDING_IP6,
-            },
-            hostname_width = Self::PADDING_HOSTNAME,
-            domain_name_width = Self::PADDING_DOMAIN_NAME,
-        )
-    }
-    fn table_row(&self) -> String {
-        assert!(!self.is_empty());
+        let mut result = QueryResult::new(addr);
 
-        Self::format_row(
-            &self.ip_addr,
-            &self.host_names.first().unwrap_or(&net::nbns::NbnsAnswer::None).to_string(),
-            &self.domain_name,
-            self.ip_addr.is_ipv6(),
-        )
-    }
-    fn table_head(addr: &std::net::IpAddr) -> String {
-        Self::format_row("IP address", "Hostname", "Domain name", addr.is_ipv6())
-    }
-}
-
-pub fn run(addr: &str) -> Result<(), QueryError> {
-    if addr.contains('/') {
-        let range: Ipv4Net = addr.parse().map_err(|_| QueryError::ParseAddressesRange)?;
-
-        println!("{}", QueryResult::table_head(&range.addr().into()));
-
-        for addr in range.hosts() {
-            query(addr.into())?;
-        };
-
-    } else {
-        let addr: std::net::IpAddr = addr.parse().map_err(|_| QueryError::ParseAddress)?;
-
-        query(addr)?;
-
-        println!("{}", QueryResult::table_head(&addr));
-    }
-    Ok(())
-}
-
-fn query(addr: std::net::IpAddr) -> Result<QueryResult, QueryError> {
-
-    // TODO: send arp first
-
-    let mut result = QueryResult::new(addr);
-
-    if addr.is_ipv4() { // Nbns doesn't support IPv6
-        if let Some(ans) = NbnsQuery::send(addr)? {
-            for i in ans {
-                result.host_names.push(i);
+        if addr.is_ipv4() { // Nbns doesn't support IPv6
+            if let Some(ans) = NbnsQuery::send(addr)? {
+                for i in ans {
+                    result.push_hostname(i);
+                };
             };
+        }
+
+        if let Some(ans) = MdnsQuery::send(addr)? {
+            result.set_domain_name(ans);
         };
+
+        if !result.is_empty() {
+            self.write(&result.table_row());
+        }
+
+        Ok(())
     }
+    fn ask_multiple(&mut self, addr_range: ipnet::IpNet) -> Result<(), QueryError> {
+        // the only case where async is needed is in this function
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
 
-    if let Some(ans) = MdnsQuery::send(addr)? {
-        result.domain_name = ans;
-    };
+        for addr in addr_range.hosts() {
+            let mut t = self.clone();
+            rt.spawn(async move {
+                if let Err(e) = t.ask(addr) {
+                    return Err(e);
+                } else { return Ok(()) }
+            });
+        };
 
-    if !result.is_empty() {
-        println!("{}", result.table_row());
+        Ok(())
     }
+}
 
-    Ok(result)
+pub fn run(args: Args) -> Result<(), QueryError> {
+
+    let mut app = App::new(args);
+
+    if !app.target().contains('/') {
+        let addr: std::net::IpAddr = app.target().parse().map_err(|_| QueryError::ParseAddress)?;
+
+        app.write(&QueryResult::table_head(&addr));
+
+        app.ask(addr)?;
+    } else {
+        let range: Ipv4Net = app.target().parse().map_err(|_| QueryError::ParseAddressesRange)?;
+
+        app.write(&QueryResult::table_head(&range.addr().into()));
+
+        app.ask_multiple(range.into())?;
+    }
+    app.outbuff();
+
+    Ok(())
 }

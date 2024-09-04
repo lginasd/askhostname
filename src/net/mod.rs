@@ -2,10 +2,11 @@ pub mod nbns;
 pub mod mdns;
 
 use crate::QueryError;
+use nbns::NbnsAnswer;
 use std::net::{UdpSocket, IpAddr};
 
 
-pub const TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
+pub const TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 pub const RECV_BUFF_SIZE: usize = 256;
 
 // DOMAIN NAMES - IMPLEMENTATION and SPECIFICATION  https://www.rfc-editor.org/rfc/rfc883
@@ -42,6 +43,75 @@ impl DnsHeader {
             nscount:  0u16.to_be(),
             arcount:  0u16.to_be(),
         }
+    }
+}
+
+
+pub struct QueryResult {
+    ip_addr: std::net::IpAddr,
+    host_names: Vec<NbnsAnswer>,
+    domain_name: String
+}
+impl QueryResult {
+    const PADDING_IP4: usize = 16;
+    const PADDING_IP6: usize = 36;
+    const PADDING_HOSTNAME: usize = 16;
+    const PADDING_DOMAIN_NAME: usize = 20;
+
+    pub fn new(ip_addr: std::net::IpAddr) -> Self {
+        QueryResult {
+            ip_addr,
+            host_names: Vec::new(),
+            domain_name: String::new()
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.host_names.is_empty() && self.domain_name.is_empty()
+    }
+    pub fn addr(&self) -> &IpAddr {
+        &self.ip_addr
+    }
+    pub fn hostnames(&self) -> &Vec<NbnsAnswer> {
+        &self.host_names
+    }
+    pub fn domain_name(&self) -> &str {
+        &self.domain_name
+    }
+    pub fn push_hostname(&mut self, hostname: NbnsAnswer) {
+        self.host_names.push(hostname);
+    }
+    pub fn set_domain_name(&mut self, domain_name: String) {
+        self.domain_name = domain_name;
+    }
+
+    // Different padding is needed for IPv4 and IPv6
+    fn format_row<A, B, C>(a: A, b: B, c: C, is_ipv6: bool) -> String
+    where A: std::fmt::Display, B: std::fmt::Display, C: std::fmt::Display
+    {
+        format!(
+            "{:<ip_width$} {:<hostname_width$} {:<domain_name_width$}",
+            a, b, c,
+
+            ip_width = match is_ipv6 {
+                false => Self::PADDING_IP4,
+                true  => Self::PADDING_IP6,
+            },
+            hostname_width = Self::PADDING_HOSTNAME,
+            domain_name_width = Self::PADDING_DOMAIN_NAME,
+        )
+    }
+    pub fn table_row(&self) -> String {
+        assert!(!self.is_empty());
+
+        Self::format_row(
+            &self.ip_addr,
+            &self.host_names.first().unwrap_or(&nbns::NbnsAnswer::None).to_string(),
+            &self.domain_name,
+            self.ip_addr.is_ipv6(),
+        )
+    }
+    pub fn table_head(addr: &std::net::IpAddr) -> String {
+        Self::format_row("IP address", "Hostname", "Domain name", addr.is_ipv6())
     }
 }
 
