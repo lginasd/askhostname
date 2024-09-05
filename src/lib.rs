@@ -57,7 +57,7 @@ struct OutputBuffer (
 );
 impl OutputBuffer {
     fn new(ip_addr_type: std::net::IpAddr, args: &Args) -> Self {
-        let mut s = Self { 0: Arc::new(Mutex::new(String::new())) };
+        let mut s = Self ( Arc::new(Mutex::new(String::new())) );
         if !args.quiet {
             s.write(&QueryResult::table_head(&ip_addr_type), args.wait);
         }
@@ -80,14 +80,13 @@ struct App {
 }
 impl App {
     fn new(args: Args) -> Self {
-        let ip_addr_type: std::net::IpAddr;
-        if args.target.contains('/') {
-            ip_addr_type = args.target.parse::<ipnet::IpNet>()
+        let ip_addr_type: std::net::IpAddr = if args.target.contains('/') {
+            args.target.parse::<ipnet::IpNet>()
                 .unwrap()
-                .addr();
+                .addr()
         } else {
-            ip_addr_type = args.target.parse().unwrap()
-        }
+            args.target.parse().unwrap()
+        };
         if let Some(new_timeout) = args.timeout {
             match new_timeout {
                 0..=100 => { eprintln!("The selected timeout may be too low for reciving answers")},
