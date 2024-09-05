@@ -5,6 +5,8 @@ use net::nbns::NbnsQuery;
 use net::mdns::MdnsQuery;
 use ipnet::Ipv4Net;
 use clap::Parser;
+mod utils;
+use utils::AppendNewline;
 
 #[derive(Parser, Clone)]
 #[command(version, about, long_about = None)]
@@ -68,7 +70,7 @@ struct OutputBuffer (
 impl OutputBuffer {
     fn new(ip_addr_type: std::net::IpAddr, args: &Args) -> Self {
         let mut s = Self ( Arc::new(Mutex::new(String::new())) );
-        if !args.quiet {
+        if !(args.quiet || args.verbose) {
             s.write(&QueryResult::table_head(&ip_addr_type), args.wait);
         }
         s
@@ -77,7 +79,7 @@ impl OutputBuffer {
         if wait {
             let mut b = self.0.lock().unwrap();
             b.push_str(s);
-            b.push('\n');
+            b.new_line();
         } else {
             println!("{}", s);
         }
@@ -118,7 +120,7 @@ impl App {
         &self.args.target
     }
 
-    fn query_and_out(addr: std::net::IpAddr, mut out: OutputBuffer, wait: bool) -> Result<(), AppError> {
+    fn query_and_out(addr: std::net::IpAddr, mut out: OutputBuffer, wait: bool, verbose: bool) -> Result<(), AppError> {
 
         if addr.is_ipv6() { return Err(AppError::Ipv6) };
 
@@ -137,13 +139,17 @@ impl App {
         };
 
         if !result.is_empty() {
-            out.write(&result.table_row(), wait);
+            if verbose {
+                out.write(&result.verbose_entry(), wait);
+            } else {
+                out.write(&result.table_row(), wait);
+            }
         }
 
         Ok(())
     }
     fn ask(&mut self, addr: std::net::IpAddr) -> Result<(), AppError> {
-        Self::query_and_out(addr, self.output_buffer.clone(), self.args.wait)
+        Self::query_and_out(addr, self.output_buffer.clone(), self.args.wait, self.args.verbose)
     }
     fn ask_multiple(&mut self, addr_range: ipnet::IpNet) -> Result<(), AppError> {
         // the only case where async is needed is in this function
@@ -157,9 +163,10 @@ impl App {
         for addr in addr_range.hosts() {
             let b = self.output_buffer.clone(); // Rc<Mutex>
             let wait = self.args.wait;
+            let verbose = self.args.verbose;
             let err_vec = errors.clone();
             rt.spawn(async move { // NOTE: will ignore all errors
-                if let Err(e) = Self::query_and_out(addr, b, wait) {
+                if let Err(e) = Self::query_and_out(addr, b, wait, verbose) {
                     err_vec.lock().unwrap().push((addr, e));
                 };
             });

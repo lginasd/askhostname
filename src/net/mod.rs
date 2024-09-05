@@ -2,6 +2,7 @@ pub mod nbns;
 pub mod mdns;
 
 use crate::AppError;
+use crate::AppendNewline;
 use nbns::NbnsAnswer;
 use std::net::{UdpSocket, IpAddr};
 
@@ -91,6 +92,9 @@ impl QueryResult {
             domain_name_width = Self::PADDING_DOMAIN_NAME,
         )
     }
+    pub fn table_head(addr: &std::net::IpAddr) -> String {
+        Self::format_row("IP address", "Hostname", "Domain name", addr.is_ipv6())
+    }
     pub fn table_row(&self) -> String {
         assert!(!self.is_empty());
 
@@ -112,8 +116,28 @@ impl QueryResult {
             self.ip_addr.is_ipv6(),
         )
     }
-    pub fn table_head(addr: &std::net::IpAddr) -> String {
-        Self::format_row("IP address", "Hostname", "Domain name", addr.is_ipv6())
+    pub fn verbose_entry(&self) -> String {
+        assert!(!self.is_empty());
+
+        let mut res = String::new();
+        res.new_line();
+
+        res.push_str(&self.ip_addr.to_string());
+        res.new_line();
+
+        for name in self.host_names.iter() {
+            res.push_str(&name.to_string());
+            res.new_line();
+        }
+
+        if !self.domain_name.is_empty() {
+            res.push_str(&format!("Domain name: {}", self.domain_name));
+        }
+
+        res.new_line();
+        res.new_line();
+
+        res
     }
 }
 
