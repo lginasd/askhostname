@@ -23,6 +23,10 @@ pub struct Args {
     /// Wait for all answers, and then print them at once
     #[arg(short, long)]
     wait: bool,
+
+    /// Timeout in milliseconds
+    #[arg(short, long)]
+    timeout: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -44,7 +48,7 @@ impl std::fmt::Display for QueryError {
     }
 }
 
-/// When the program is run with --wait flag, it doesn't output immediatly and stores everything in
+/// When the program is run with --wait flag, it doesn't output immediately and stores everything in
 /// `OutputBuffer`.
 /// It's a `String` contained in `Arc<Mutex>`, so it can be shared between async threads.
 #[derive(Clone)]
@@ -83,6 +87,16 @@ impl App {
                 .addr();
         } else {
             ip_addr_type = args.target.parse().unwrap()
+        }
+        if let Some(new_timeout) = args.timeout {
+            match new_timeout {
+                0..=100 => { eprintln!("The selected timeout may be too low for reciving answers")},
+                5000.. =>  { eprintln!("The selected timeout may be too big and scanning may be slow")},
+                _ => {}
+            }
+            unsafe {
+                net::TIMEOUT = std::time::Duration::from_millis(new_timeout);
+            }
         }
 
         App {

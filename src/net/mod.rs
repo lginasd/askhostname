@@ -6,7 +6,7 @@ use nbns::NbnsAnswer;
 use std::net::{UdpSocket, IpAddr};
 
 
-pub const TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
+pub static mut TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 pub const RECV_BUFF_SIZE: usize = 256;
 
 // DOMAIN NAMES - IMPLEMENTATION and SPECIFICATION  https://www.rfc-editor.org/rfc/rfc883
@@ -122,8 +122,12 @@ fn query(addr: IpAddr, port: u16, request: &[u8]) -> Result<Option<Vec<u8>>, Que
         return Err(QueryError::Network);
     }
 
-    if sock.set_write_timeout(Some(TIMEOUT)).is_err() { return Err(QueryError::Network) };
-    if sock.set_read_timeout (Some(TIMEOUT)).is_err() { return Err(QueryError::Network) };
+    let timeout: std::time::Duration;
+    unsafe {
+        timeout = TIMEOUT;
+    }
+    if sock.set_write_timeout(Some(timeout)).is_err() { return Err(QueryError::Network) };
+    if sock.set_read_timeout (Some(timeout)).is_err() { return Err(QueryError::Network) };
 
     if let Err(err) = sock.send(request) {
         eprintln!("Failed to send request: {}", err);
