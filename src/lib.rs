@@ -30,20 +30,30 @@ pub struct Args {
 }
 
 #[derive(Debug)]
-pub enum QueryError {
+pub enum AppError {
     ParseAddress,
     ParseAddressesRange,
-    Network,
+    SocketCreate,
+    SocketConnect,
+    SocketSend,
+    SocketTimeout,
     InvalidResponse,
+    ScanError,
+    Ipv6,
 }
-impl std::error::Error for QueryError {}
-impl std::fmt::Display for QueryError {
+impl std::error::Error for AppError {}
+impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "query error {}", match self {
-            QueryError::ParseAddress => "ParseAddress",
-            QueryError::ParseAddressesRange => "ParseAddressesRange",
-            QueryError::Network => "Network",
-            QueryError::InvalidResponse => "InvalidResponse",
+        write!(f, "{}", match self {
+            AppError::ParseAddress => "failed to parse address",
+            AppError::ParseAddressesRange => "failed to parse address range",
+            AppError::SocketCreate => "failed to create socket",
+            AppError::SocketConnect => "connection with remote host failed",
+            AppError::SocketSend => "failed to send request",
+            AppError::SocketTimeout => "invalid socket timeout",
+            AppError::InvalidResponse => "recived invalid response",
+            AppError::ScanError => "errors occurred while scanning range of addresses",
+            AppError::Ipv6 => "IPv6 is not supported yet",
         })
     }
 }
@@ -79,13 +89,14 @@ struct App {
     output_buffer: OutputBuffer,
 }
 impl App {
-    fn new(args: Args) -> Self {
+    fn new(args: Args) -> Result<Self, AppError> {
         let ip_addr_type: std::net::IpAddr = if args.target.contains('/') {
             args.target.parse::<ipnet::IpNet>()
-                .unwrap()
+                .map_err(|_| AppError::ParseAddressesRange)?
                 .addr()
         } else {
-            args.target.parse().unwrap()
+            args.target.parse()
+                .map_err(|_| AppError::ParseAddress)?
         };
         if let Some(new_timeout) = args.timeout {
             match new_timeout {
@@ -93,21 +104,23 @@ impl App {
                 5000.. =>  { eprintln!("The selected timeout may be too big and scanning may be slow")},
                 _ => {}
             }
-            unsafe {
-                net::TIMEOUT = std::time::Duration::from_millis(new_timeout);
-            }
+            if let Err(e) = net::set_timeout_from_millis(new_timeout) {
+                return Err(e)
+            };
         }
 
-        App {
-            output_buffer: OutputBuffer::new(ip_addr_type, &args),
-            args,
-        }
+        Ok(App {
+                output_buffer: OutputBuffer::new(ip_addr_type, &args),
+                args,
+            })
     }
     fn target(&self) -> &str {
         &self.args.target
     }
 
-    fn query_and_out(addr: std::net::IpAddr, mut out: OutputBuffer, wait: bool) -> Result<(), QueryError> {
+    fn query_and_out(addr: std::net::IpAddr, mut out: OutputBuffer, wait: bool) -> Result<(), AppError> {
+
+        if addr.is_ipv6() { return Err(AppError::Ipv6) };
 
         let mut result = QueryResult::new(addr);
 
@@ -129,23 +142,36 @@ impl App {
 
         Ok(())
     }
-    fn ask(&mut self, addr: std::net::IpAddr) -> Result<(), QueryError> {
+    fn ask(&mut self, addr: std::net::IpAddr) -> Result<(), AppError> {
         Self::query_and_out(addr, self.output_buffer.clone(), self.args.wait)
     }
-    fn ask_multiple(&mut self, addr_range: ipnet::IpNet) -> Result<(), QueryError> {
+    fn ask_multiple(&mut self, addr_range: ipnet::IpNet) -> Result<(), AppError> {
         // the only case where async is needed is in this function
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
 
+        let errors: Arc<Mutex<Vec<(std::net::IpAddr, AppError)>>> = Arc::new(Mutex::new(Vec::new()));
+
         for addr in addr_range.hosts() {
             let b = self.output_buffer.clone(); // Rc<Mutex>
             let wait = self.args.wait;
-            rt.spawn(async move {
-                Self::query_and_out(addr, b, wait)
+            let err_vec = errors.clone();
+            rt.spawn(async move { // NOTE: will ignore all errors
+                if let Err(e) = Self::query_and_out(addr, b, wait) {
+                    err_vec.lock().unwrap().push((addr, e));
+                };
             });
         };
+
+        let errors = errors.lock().unwrap();
+        if !errors.is_empty() {
+            for (addr, err) in errors.iter() {
+                eprintln!("Error for {}: {}", addr, err);
+            }
+            return Err(AppError::ScanError);
+        }
 
         Ok(())
     }
@@ -158,20 +184,20 @@ impl Drop for App {
     }
 }
 
-pub fn run(args: Args) -> Result<(), QueryError> {
+pub fn run(args: Args) -> Result<(), AppError> {
 
-    let mut app = App::new(args);
+    let mut app = App::new(args)?;
 
     if !app.target().contains('/') {
         let addr: std::net::IpAddr = app.target()
             .parse()
-            .map_err(|_| QueryError::ParseAddress)?;
+            .map_err(|_| AppError::ParseAddress)?;
 
         app.ask(addr)?;
     } else {
         let range: Ipv4Net = app.target()
             .parse()
-            .map_err(|_| QueryError::ParseAddressesRange)?;
+            .map_err(|_| AppError::ParseAddressesRange)?;
 
         app.ask_multiple(range.into())?;
     }

@@ -1,7 +1,7 @@
 pub mod nbns;
 pub mod mdns;
 
-use crate::QueryError;
+use crate::AppError;
 use nbns::NbnsAnswer;
 use std::net::{UdpSocket, IpAddr};
 
@@ -117,24 +117,33 @@ impl QueryResult {
     }
 }
 
-fn query(addr: IpAddr, port: u16, request: &[u8]) -> Result<Option<Vec<u8>>, QueryError> {
-    let sock = UdpSocket::bind("0.0.0.0:0").expect("Failed to create socket");
+pub fn set_timeout_from_millis(timeout: u64) -> Result<(), AppError> {
+    if timeout == 0 {
+        return Err(AppError::SocketTimeout);
+    }
+    unsafe {
+        TIMEOUT = std::time::Duration::from_millis(timeout);
+    }
+    Ok(())
+}
+fn get_timeout() -> std::time::Duration {
+    unsafe {
+        TIMEOUT
+    }
+}
+
+fn query(addr: IpAddr, port: u16, request: &[u8]) -> Result<Option<Vec<u8>>, AppError> {
+    let sock = UdpSocket::bind("0.0.0.0:0").map_err(|_| AppError::SocketCreate)?;
 
     if let Err(_) = sock.connect((addr, port)) {
-        return Err(QueryError::Network);
+        return Err(AppError::SocketConnect);
     }
 
-    let timeout: std::time::Duration;
-    unsafe {
-        timeout = TIMEOUT;
-    }
-    if sock.set_write_timeout(Some(timeout)).is_err() { return Err(QueryError::Network) };
-    if sock.set_read_timeout (Some(timeout)).is_err() { return Err(QueryError::Network) };
+    let timeout = get_timeout();
+    if sock.set_write_timeout(Some(timeout)).is_err() { return Err(AppError::SocketTimeout) };
+    if sock.set_read_timeout (Some(timeout)).is_err() { return Err(AppError::SocketTimeout) };
 
-    if let Err(err) = sock.send(request) {
-        eprintln!("Failed to send request: {}", err);
-        return Err(QueryError::Network);
-    };
+    if sock.send(request).is_err() { return Err(AppError::SocketSend) };
 
     let mut response = [0; RECV_BUFF_SIZE];
     if sock.recv(&mut response).is_err() {

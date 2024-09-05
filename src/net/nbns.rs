@@ -1,7 +1,7 @@
 // NetBIOS Name Service
 // https://www.rfc-editor.org/rfc/rfc1002.html
 
-use crate::QueryError;
+use crate::AppError;
 use crate::net::{DnsHeader, query};
 use std::net::IpAddr;
 
@@ -41,7 +41,7 @@ impl NbnsQuery {
         }
     }
 
-    pub fn send(addr: IpAddr) -> Result<Option<Vec<NbnsAnswer>>, QueryError> {
+    pub fn send(addr: IpAddr) -> Result<Option<Vec<NbnsAnswer>>, AppError> {
 
         let request = Self::new();
 
@@ -73,7 +73,7 @@ impl NbnsQuery {
                 _ => NbnsAnswer::Unique(name),
             })
         };
-        if names.is_empty() { return Err(QueryError::InvalidResponse) };
+        if names.is_empty() { return Err(AppError::InvalidResponse) };
 
         // For now return only first name, as it's the most reliable. Maybe return all later, if output
         // should be verbose

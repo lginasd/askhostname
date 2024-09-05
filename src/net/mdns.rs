@@ -1,7 +1,7 @@
 // Multicast DNS
 // https://www.rfc-editor.org/rfc/rfc6762.html
 
-use crate::QueryError;
+use crate::AppError;
 use crate::net::{DnsHeader, query};
 use std::net::IpAddr;
 
@@ -74,7 +74,7 @@ impl MdnsQuery {
         tmp_vec
     }
 
-    pub fn send(addr: IpAddr) -> Result<Option<String>, QueryError> {
+    pub fn send(addr: IpAddr) -> Result<Option<String>, AppError> {
         let request = Self::new(addr).to_packet();
 
         let buff = query(addr, Self::PORT, &request)?;

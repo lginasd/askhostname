@@ -7,7 +7,7 @@ fn main() -> std::process::ExitCode {
         Ok(_) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("askhostname: {}", e);
-            return std::process::ExitCode::FAILURE;
+            std::process::ExitCode::FAILURE
         },
     }
 }
