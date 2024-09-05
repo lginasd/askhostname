@@ -24,8 +24,8 @@ impl MdnsQuery {
         // name is encoded as ASCII octets preceded by their amount, ended with NULL-terminator (0x00)
         // for example domain "abc.com" would be 0x03 0x41 0x42 0x43 0x03 0x43 0x6f 0x6d 0x00
         // for example addres 127.0.0.1 is 0x03 0x31 0x32 0x37 0x01 0x30 0x01 0x30 0x01 0x31 0x00
+        // note that there is no '.' (0x2e), instead amount of octets
         // for reverse DNS lookup address is reversed and represented like char arrays + .in-addr.arpa
-        // note that there is no '.' (0x2e), instead amount of octets (size of word)
         match ip {
             IpAddr::V4(a) => {
                 let octets: Vec<String> = a.octets().into_iter().map(|x| x.to_string()).collect();
@@ -35,7 +35,7 @@ impl MdnsQuery {
                 }
             },
             IpAddr::V6(_a) => {
-                todo!()
+                todo!("IPv6 is not implemented yet")
             }
         };
 
@@ -82,18 +82,16 @@ impl MdnsQuery {
         let buff = buff.unwrap();
 
         // response contains request + response name [u8; 2] + response type [u8; 2] + cache flush [u8; 2] + time to live [u8; 4] + answer
-        // so actual response is at buff[(request_size + 10)..]
+        // so actual response is at buff[(request.len() + 10)..]
         let (_, response) = buff.split_at(request.len() + 10);
         // the next two bytes correspond to the answer size
         let answer_size: u16 = ((response[0] as u16) << 8) | response[1] as u16;
 
         let mut name = String::new();
 
-        // println!("Response: {:x?}", response);
-
         // name consists of the words (ASCII octet strings, preceded by their size)
         // for example "abc.com" would be 0x03 0x41 0x42 0x43 0x03 0x43 0x6f 0x6d 0x00
-        // usualy the last word is "local"
+        // for local domain names last word is "local"
 
         let mut word_size = response[2]; // size of first array of octets
 
@@ -102,7 +100,7 @@ impl MdnsQuery {
             .take((answer_size - 2) as usize) // ignore NULL-terminator
             .for_each(|&b| {
                 if word_size == 0 {
-                    word_size = b;
+                    word_size = b; // update word size to next word
                     name.push('.');
                 } else {
                     word_size -= 1;
@@ -111,8 +109,6 @@ impl MdnsQuery {
                     }
                 };
             });
-
-        // println!("answer_size: {}, word_size: {}, offset: {}", name_size, word_size, request.len());
 
         Ok(Some(name))
     }

@@ -68,15 +68,6 @@ impl QueryResult {
     pub fn is_empty(&self) -> bool {
         self.host_names.is_empty() && self.domain_name.is_empty()
     }
-    pub fn addr(&self) -> &IpAddr {
-        &self.ip_addr
-    }
-    pub fn hostnames(&self) -> &Vec<NbnsAnswer> {
-        &self.host_names
-    }
-    pub fn domain_name(&self) -> &str {
-        &self.domain_name
-    }
     pub fn push_hostname(&mut self, hostname: NbnsAnswer) {
         self.host_names.push(hostname);
     }

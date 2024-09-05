@@ -49,8 +49,6 @@ impl NbnsQuery {
         if buff.is_none() { return Ok(None) };
         let buff = buff.unwrap();
 
-        // println!("Recived\n\n {:x?}", buff);
-
         // response contains request + time to live [0u8; 4] + answer
         // the next two bytes correspond to the answer size, followed by a one byte count of names
         // next chunks of 18 bytes represent name [u8; 16] + permanent node flags [u8; 2]
@@ -76,7 +74,6 @@ impl NbnsQuery {
             })
         };
         if names.is_empty() { return Err(QueryError::InvalidResponse) };
-        // println!("Debug: names is {:?}", names);
 
         // For now return only first name, as it's the most reliable. Maybe return all later, if output
         // should be verbose
