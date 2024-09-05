@@ -94,10 +94,21 @@ impl QueryResult {
     pub fn table_row(&self) -> String {
         assert!(!self.is_empty());
 
+        let hostname = match self.host_names.first() {
+            Some(n) => n.to_string(),
+            None => "-".to_string()
+        };
+
+        let domain_name = if !self.domain_name.is_empty() {
+            self.domain_name.to_string()
+        } else {
+            "-".to_string()
+        };
+
         Self::format_row(
-            &self.ip_addr,
-            &self.host_names.first().unwrap_or(&nbns::NbnsAnswer::None).to_string(),
-            &self.domain_name,
+            self.ip_addr,
+            hostname,
+            domain_name,
             self.ip_addr.is_ipv6(),
         )
     }

@@ -85,7 +85,6 @@ pub enum NbnsAnswer {
     Group(String),
     Unique(String),
     Permanent(String),
-    None,
 }
 impl std::fmt::Display for NbnsAnswer {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -93,7 +92,6 @@ impl std::fmt::Display for NbnsAnswer {
             NbnsAnswer::Group(s) => { write!(f, "{} (Group)", s) },
             NbnsAnswer::Unique(s) => { write!(f, "{}", s) },
             NbnsAnswer::Permanent(s) => { write!(f, "{} (Permanent name)", s) },
-            NbnsAnswer::None => { write!(f, "") },
         }
     }
 }
