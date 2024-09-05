@@ -44,37 +44,57 @@ impl std::fmt::Display for QueryError {
     }
 }
 
+/// When the program is run with --wait flag, it doesn't output immediatly and stores everything in
+/// `OutputBuffer`.
+/// It's a `String` contained in `Arc<Mutex>`, so it can be shared between async threads.
 #[derive(Clone)]
+struct OutputBuffer (
+    Arc<Mutex<String>>
+);
+impl OutputBuffer {
+    fn new(ip_addr_type: std::net::IpAddr, args: &Args) -> Self {
+        let mut s = Self { 0: Arc::new(Mutex::new(String::new())) };
+        if !args.quiet {
+            s.write(&QueryResult::table_head(&ip_addr_type), args.wait);
+        }
+        s
+    }
+    fn write(&mut self, s: &str, wait: bool) {
+        if wait {
+            let mut b = self.0.lock().unwrap();
+            b.push_str(s);
+            b.push('\n');
+        } else {
+            println!("{}", s);
+        }
+    }
+}
+
 struct App {
     args: Args,
-    output_buffer: Arc<Mutex<String>>, // If shouldn't print immediately
+    output_buffer: OutputBuffer,
 }
 impl App {
     fn new(args: Args) -> Self {
+        let ip_addr_type: std::net::IpAddr;
+        if args.target.contains('/') {
+            ip_addr_type = args.target.parse::<ipnet::IpNet>()
+                .unwrap()
+                .addr();
+        } else {
+            ip_addr_type = args.target.parse().unwrap()
+        }
+
         App {
+            output_buffer: OutputBuffer::new(ip_addr_type, &args),
             args,
-            output_buffer: Arc::new(Mutex::new(String::new())),
         }
     }
     fn target(&self) -> &str {
         &self.args.target
     }
-    fn write(&mut self, s: &str) {
-        if self.args.wait {
-            let mut b = self.output_buffer.lock().unwrap();
-            b.push_str(s);
-            b.push('\n'); // not very cross-platform
-        } else {
-            println!("{}", s);
-        }
-    }
-    fn outbuff(&self) {
-        if self.args.wait {
-            println!("{}", &self.output_buffer.lock().unwrap());
-        }
-    }
 
-    fn ask(&mut self, addr: std::net::IpAddr) -> Result<(), QueryError> {
+    fn query_and_out(addr: std::net::IpAddr, mut out: OutputBuffer, wait: bool) -> Result<(), QueryError> {
 
         let mut result = QueryResult::new(addr);
 
@@ -91,10 +111,13 @@ impl App {
         };
 
         if !result.is_empty() {
-            self.write(&result.table_row());
+            out.write(&result.table_row(), wait);
         }
 
         Ok(())
+    }
+    fn ask(&mut self, addr: std::net::IpAddr) -> Result<(), QueryError> {
+        Self::query_and_out(addr, self.output_buffer.clone(), self.args.wait)
     }
     fn ask_multiple(&mut self, addr_range: ipnet::IpNet) -> Result<(), QueryError> {
         // the only case where async is needed is in this function
@@ -104,15 +127,21 @@ impl App {
             .unwrap();
 
         for addr in addr_range.hosts() {
-            let mut t = self.clone();
+            let b = self.output_buffer.clone(); // Rc<Mutex>
+            let wait = self.args.wait;
             rt.spawn(async move {
-                if let Err(e) = t.ask(addr) {
-                    return Err(e);
-                } else { return Ok(()) }
+                Self::query_and_out(addr, b, wait)
             });
         };
 
         Ok(())
+    }
+}
+impl Drop for App {
+    fn drop(&mut self) {
+        if self.args.wait {
+            println!("{}", self.output_buffer.0.lock().unwrap())
+        }
     }
 }
 
@@ -121,19 +150,18 @@ pub fn run(args: Args) -> Result<(), QueryError> {
     let mut app = App::new(args);
 
     if !app.target().contains('/') {
-        let addr: std::net::IpAddr = app.target().parse().map_err(|_| QueryError::ParseAddress)?;
-
-        app.write(&QueryResult::table_head(&addr));
+        let addr: std::net::IpAddr = app.target()
+            .parse()
+            .map_err(|_| QueryError::ParseAddress)?;
 
         app.ask(addr)?;
     } else {
-        let range: Ipv4Net = app.target().parse().map_err(|_| QueryError::ParseAddressesRange)?;
-
-        app.write(&QueryResult::table_head(&range.addr().into()));
+        let range: Ipv4Net = app.target()
+            .parse()
+            .map_err(|_| QueryError::ParseAddressesRange)?;
 
         app.ask_multiple(range.into())?;
     }
-    app.outbuff();
 
     Ok(())
 }
