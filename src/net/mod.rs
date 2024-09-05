@@ -26,7 +26,7 @@ impl DnsHeader {
 
     fn new_nbns() -> Self {
         Self {
-            trans_id: 0x5021u16.to_be(), // TODO: randomize
+            trans_id: rand::random::<u16>().to_be(),
             flags:    0u16.to_be(), // unicast
             qdcount:  1u16.to_be(),
             ancount:  0u16.to_be(),
