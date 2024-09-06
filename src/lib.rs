@@ -1,17 +1,17 @@
 use std::sync::{Arc, Mutex};
-mod net;
-use net::QueryResult;
-use net::nbns::NbnsQuery;
-use net::mdns::MdnsQuery;
-use ipnet::Ipv4Net;
+use std::net::IpAddr;
+use net::{QueryResult, nbns::NbnsQuery, mdns::MdnsQuery};
 use clap::Parser;
-mod utils;
 use utils::AppendNewline;
+
+mod net;
+mod utils;
 
 #[derive(Parser, Clone)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// Target to ask hostname (can be range with CIDR notation)
+    /// Target to ask hostname, can be
+    /// address (192.168.1.100) or range (192.168.1.0/24)
     target: String,
 
     /// Verbose output
@@ -64,7 +64,7 @@ impl std::fmt::Display for AppError {
     }
 }
 
-/// When the program is run with --wait flag, it doesn't output immediately and stores everything in
+/// When the program is run with `--wait` flag, it doesn't output immediately and stores everything in
 /// `OutputBuffer`.
 /// It's a `String` contained in `Arc<Mutex>`, so it can be shared between async threads.
 #[derive(Clone)]
@@ -72,7 +72,7 @@ struct OutputBuffer (
     Arc<Mutex<String>>
 );
 impl OutputBuffer {
-    fn new(ip_addr_type: std::net::IpAddr, args: &Args) -> Self {
+    fn new(ip_addr_type: IpAddr, args: &Args) -> Self {
         let mut s = Self ( Arc::new(Mutex::new(String::new())) );
         if !(args.quiet || args.verbose) {
             s.write(&QueryResult::table_head(&ip_addr_type), args.wait);
@@ -90,13 +90,17 @@ impl OutputBuffer {
     }
 }
 
+/// Main struct. Contains `Args` and `OutputBuffer`.
+/// `ask` and `ask_multiple` will ask for hostnames and domain name and output it to STDOUT or
+/// `OutputBuffer` when `--wait` option is set.
+/// On `drop` will print `OutputBuffer`, if should.
 struct App {
     args: Args,
     output_buffer: OutputBuffer,
 }
 impl App {
     fn new(args: Args) -> Result<Self, AppError> {
-        let ip_addr_type: std::net::IpAddr = if args.target.contains('/') {
+        let ip_addr_type: IpAddr = if args.target.contains('/') {
             args.target.parse::<ipnet::IpNet>()
                 .map_err(|_| AppError::ParseAddressesRange)?
                 .addr()
@@ -107,7 +111,7 @@ impl App {
         if let Some(new_timeout) = args.timeout {
             match new_timeout {
                 0 ..= net::TOO_LOW_TIMEOUT_WARNING_MS => { eprintln!("The selected timeout may be too low for reciving answers")},
-                net::TOO_BIG_TIMEOUT_WARNING_MS.. =>  { eprintln!("The selected timeout may be too big and scanning may be slow")},
+                net::TOO_BIG_TIMEOUT_WARNING_MS..     => { eprintln!("The selected timeout may be too big and scanning may be slow")},
                 _ => {}
             }
             if let Err(e) = net::set_timeout_from_millis(new_timeout) {
@@ -124,7 +128,10 @@ impl App {
         &self.args.target
     }
 
-    fn query_and_out(addr: std::net::IpAddr, mut out: OutputBuffer, wait: bool, verbose: bool) -> Result<(), AppError> {
+    // borrowing rules doesn't allow moving self to aync block, so query_and_out supossed to be
+    // wrapped in ask and ask_multiple functions.
+    // Instead of copying self, ask_multiple copies Arc<Mutex<OutputBuffer>> and passes it to query_and_out.
+    fn query_and_out(addr: IpAddr, mut out: OutputBuffer, wait: bool, verbose: bool) -> Result<(), AppError> {
 
         if addr.is_ipv6() { return Err(AppError::Ipv6) };
 
@@ -173,17 +180,24 @@ impl App {
 
         Ok(())
     }
-    fn ask(&mut self, addr: std::net::IpAddr) -> Result<(), AppError> {
+    /// Asks `addr` for any names and outputs them to STDOUT or to `OutputBuffer` when `self.wait` is true.
+    /// If `self.verbose` is true, will verbosely format entry.
+    /// When querying resulted an error, will return `AppError`.
+    fn ask(&mut self, addr: IpAddr) -> Result<(), AppError> {
         Self::query_and_out(addr, self.output_buffer.clone(), self.args.wait, self.args.verbose)
     }
+    /// Asynchronously asks every host in `addr_range` and outputs results to STDOUT or
+    /// `OutputBuffer` if `self.wait` is true.
+    /// When any of querying resulted an error, will print address and error to STDERR and return `AppError::ScanError`
     fn ask_multiple(&mut self, addr_range: ipnet::IpNet) -> Result<(), AppError> {
+        if addr_range.addr().is_ipv6() { return Err(AppError::ScanError) };
         // the only case where async is needed is in this function
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .unwrap();
 
-        let errors: Arc<Mutex<Vec<(std::net::IpAddr, AppError)>>> = Arc::new(Mutex::new(Vec::new()));
+        let errors: Arc<Mutex<Vec<(IpAddr, AppError)>>> = Arc::new(Mutex::new(Vec::new()));
 
         for addr in addr_range.hosts() {
             let b = self.output_buffer.clone(); // Rc<Mutex>
@@ -221,13 +235,13 @@ pub fn run(args: Args) -> Result<(), AppError> {
     let mut app = App::new(args)?;
 
     if !app.target().contains('/') {
-        let addr: std::net::IpAddr = app.target()
+        let addr: IpAddr = app.target()
             .parse()
             .map_err(|_| AppError::ParseAddress)?;
 
         app.ask(addr)?;
     } else {
-        let range: Ipv4Net = app.target()
+        let range: ipnet::IpNet = app.target()
             .parse()
             .map_err(|_| AppError::ParseAddressesRange)?;
 

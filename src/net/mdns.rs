@@ -1,9 +1,9 @@
 // Multicast DNS
 // https://www.rfc-editor.org/rfc/rfc6762.html
 
+use std::net::IpAddr;
 use crate::AppError;
 use crate::net::{DnsHeader, query};
-use std::net::IpAddr;
 
 #[repr(C)]
 pub struct MdnsQuery {

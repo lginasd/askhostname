@@ -1,10 +1,9 @@
 pub mod nbns;
 pub mod mdns;
 
-use crate::AppError;
-use crate::AppendNewline;
-use nbns::NbnsAnswer;
 use std::net::{UdpSocket, IpAddr};
+use nbns::NbnsAnswer;
+use crate::{AppError, AppendNewline};
 
 
 pub const RECV_BUFF_SIZE: usize = 256;
@@ -67,6 +66,7 @@ impl std::fmt::Display for MacAddress {
     }
 }
 
+/// Result of querying single host
 pub struct QueryResult {
     ip_addr: std::net::IpAddr,
     host_names: Vec<NbnsAnswer>,
@@ -114,6 +114,7 @@ impl QueryResult {
     pub fn table_head(addr: &std::net::IpAddr) -> String {
         Self::format_row("IP address", "Hostname", "Domain name", addr.is_ipv6())
     }
+    /// Format result as table row. Panics if called on empty `QueryResult`.
     pub fn table_row(&self) -> String {
         assert!(!self.is_empty());
 
@@ -135,6 +136,7 @@ impl QueryResult {
             self.ip_addr.is_ipv6(),
         )
     }
+    /// Verbosely formats result. Panics if called on empty `QueryResult`.
     pub fn verbose_entry(&self) -> String {
         assert!(!self.is_empty());
 
@@ -160,6 +162,7 @@ impl QueryResult {
     }
 }
 
+/// Set timeout used for `query` function. Returns `AppError::SocketError` if `timeout` is 0.
 pub fn set_timeout_from_millis(timeout: u64) -> Result<(), AppError> {
     if timeout == 0 {
         return Err(AppError::SocketTimeout);
@@ -175,6 +178,9 @@ fn get_timeout() -> std::time::Duration {
     }
 }
 
+/// Make network connection with `addr` on `port` and sends `request`, then listens for answer on same
+/// address and port. If recived answer, returns it. If no answers were recived, returns `Ok(None)`.
+/// If some error occurred while communicating, returns `AppError`.
 fn query(addr: IpAddr, port: u16, request: &[u8]) -> Result<Option<Vec<u8>>, AppError> {
     let sock = UdpSocket::bind("0.0.0.0:0").map_err(|_| AppError::SocketCreate)?;
 

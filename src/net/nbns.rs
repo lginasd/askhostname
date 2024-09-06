@@ -1,9 +1,9 @@
 // NetBIOS Name Service
 // https://www.rfc-editor.org/rfc/rfc1002.html
 
+use std::net::IpAddr;
 use crate::AppError;
 use crate::net::{DnsHeader, MacAddress, query};
-use std::net::IpAddr;
 
 #[repr(C)]
 pub struct NbnsQuery {
@@ -107,6 +107,7 @@ impl std::fmt::Display for NbnsAnswer {
         }
     }
 }
+// for verbose outputting
 impl std::fmt::Debug for NbnsAnswer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

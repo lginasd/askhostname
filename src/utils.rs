@@ -1,6 +1,6 @@
 const NEWLINE: &str =
 if cfg!(windows) { "\r\n" }
-else { "\n" };
+else             { "\n" };
 
 pub trait AppendNewline {
     fn new_line(&mut self);
