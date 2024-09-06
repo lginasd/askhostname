@@ -141,9 +141,10 @@ impl QueryResult {
         assert!(!self.is_empty());
 
         let mut res = String::new();
-        res.new_line();
 
         res.push_str(&self.ip_addr.to_string());
+        res.new_line();
+        res.push_str(&format!("{:=>1$}", "", 40));
         res.new_line();
 
         for name in self.host_names.iter() {
@@ -153,8 +154,10 @@ impl QueryResult {
 
         if !self.domain_name.is_empty() {
             res.push_str(&format!("Domain name: {}", self.domain_name));
+            res.new_line();
         }
 
+        res.push_str(&format!("{:=>1$}", "", 40));
         res.new_line();
         res.new_line();
 
