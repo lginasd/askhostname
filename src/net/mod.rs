@@ -47,6 +47,22 @@ impl DnsHeader {
     }
 }
 
+pub struct MacAddress (u8, u8, u8, u8, u8, u8);
+impl MacAddress {
+    /// Constructs `MacAddress`. Returns `None` if slice has not 6 bytes.
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != 6 { return None };
+
+        Some( MacAddress (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]))
+    }
+}
+impl std::fmt::Display for MacAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            self.0, self.1, self.2, self.3, self.4, self.5
+            )
+    }
+}
 
 pub struct QueryResult {
     ip_addr: std::net::IpAddr,
@@ -126,7 +142,7 @@ impl QueryResult {
         res.new_line();
 
         for name in self.host_names.iter() {
-            res.push_str(&name.to_string());
+            res.push_str(&format!("{:?}", name));
             res.new_line();
         }
 
