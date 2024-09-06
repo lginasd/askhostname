@@ -31,7 +31,7 @@ pub struct Args {
     timeout: Option<u64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum AppError {
     ParseAddress,
     ParseAddressesRange,
@@ -39,7 +39,9 @@ pub enum AppError {
     SocketConnect,
     SocketSend,
     SocketTimeout,
-    InvalidResponse,
+    InvalidResponseNbns,
+    InvalidResponseMdns,
+    InvalidResponses,
     ScanError,
     Ipv6,
 }
@@ -53,7 +55,9 @@ impl std::fmt::Display for AppError {
             AppError::SocketConnect => "connection with remote host failed",
             AppError::SocketSend => "failed to send request",
             AppError::SocketTimeout => "invalid socket timeout",
-            AppError::InvalidResponse => "recived invalid response",
+            AppError::InvalidResponseNbns => "recived invalid Nbns response",
+            AppError::InvalidResponseMdns => "recived invalid mDNS response",
+            AppError::InvalidResponses => "recived multiple invalid responses",
             AppError::ScanError => "errors occurred while scanning range of addresses",
             AppError::Ipv6 => "IPv6 is not supported yet",
         })
@@ -125,24 +129,45 @@ impl App {
         if addr.is_ipv6() { return Err(AppError::Ipv6) };
 
         let mut result = QueryResult::new(addr);
+        let mut errors: Vec<AppError> = Vec::new();
 
         if addr.is_ipv4() { // Nbns doesn't support IPv6
-            if let Some(ans) = NbnsQuery::send(addr)? {
-                for i in ans {
-                    result.push_hostname(i);
-                };
+            match NbnsQuery::send(addr) {
+                Ok(Some(ans)) => {
+                    for i in ans {
+                        result.push_hostname(i);
+                    };
+                },
+                Ok(None) => {}
+                Err(e) => {
+                    errors.push(e);
+                },
             };
         }
 
-        if let Some(ans) = MdnsQuery::send(addr)? {
-            result.set_domain_name(ans);
-        };
+        match MdnsQuery::send(addr) {
+            Ok(Some(ans)) => {
+                result.set_domain_name(ans.to_string());
+            },
+            Ok(None) => {},
+            Err(e) => {
+                errors.push(e);
+            }
+        }
 
         if !result.is_empty() {
             if verbose {
                 out.write(&result.verbose_entry(), wait);
             } else {
                 out.write(&result.table_row(), wait);
+            }
+        }
+
+        if !errors.is_empty() {
+            if errors.len() == 1 {
+                return Err(*errors.first().unwrap());
+            } else {
+                return Err(AppError::InvalidResponses)
             }
         }
 

@@ -18,7 +18,7 @@ pub struct NbnsQuery {
 impl NbnsQuery {
     pub const PORT: u16 = 137; // NetBIOS port
     pub const SIZE: usize = std::mem::size_of::<NbnsQuery>();
-    const MIN_RESPONSE_SIZE: usize = Self::SIZE + 32;
+    const MIN_RESPONSE_SIZE: usize = 32;
 
     fn new() -> Self {
         // same question is send by nbtscan and nbstat.exe
@@ -49,7 +49,7 @@ impl NbnsQuery {
         let buff = query(addr, Self::PORT, request.as_slice())?;
         if buff.is_none() { return Ok(None) };
         let buff = buff.unwrap();
-        if buff.len() <= Self::MIN_RESPONSE_SIZE { return Err(AppError::InvalidResponse) };
+        if buff.len() <= Self::SIZE + Self::MIN_RESPONSE_SIZE { return Err(AppError::InvalidResponseNbns) };
 
         // response contains request + time to live [0u8; 4] + answer
         // the next two bytes correspond to the answer size, followed by a one byte count of names
@@ -84,7 +84,7 @@ impl NbnsQuery {
             names.push(NbnsAnswer::Mac(mac));
         }
 
-        if names.is_empty() { return Err(AppError::InvalidResponse) };
+        if names.is_empty() { return Err(AppError::InvalidResponseNbns) };
         Ok(Some(names))
     }
 }

@@ -17,6 +17,7 @@ pub struct MdnsQuery {
 // Unicast direct reverse DNS lookup query with unicast response directly to the host
 impl MdnsQuery {
     pub const PORT: u16 = 5353;
+    const MIN_RESPONSE_SIZE: usize = 18;
 
     fn new(ip: IpAddr) -> Self {
         let mut question = vec![];
@@ -80,23 +81,25 @@ impl MdnsQuery {
         let buff = query(addr, Self::PORT, &request)?;
         if buff.is_none() { return Ok(None) };
         let buff = buff.unwrap();
+        if buff.len() <= request.len() + Self::MIN_RESPONSE_SIZE { return Err(AppError::InvalidResponseMdns )};
 
         // response contains request + response name [u8; 2] + response type [u8; 2] + cache flush [u8; 2] + time to live [u8; 4] + answer
         // so actual response is at buff[(request.len() + 10)..]
-        let (_, response) = buff.split_at(request.len() + 10);
+        let (_, mut response) = buff.split_at(request.len() + 10);
         // the next two bytes correspond to the answer size
         let answer_size: u16 = ((response[0] as u16) << 8) | response[1] as u16;
-
-        let mut name = String::new();
 
         // name consists of the words (ASCII octet strings, preceded by their size)
         // for example "abc.com" would be 0x03 0x41 0x42 0x43 0x03 0x43 0x6f 0x6d 0x00
         // for local domain names last word is "local"
 
         let mut word_size = response[2]; // size of first array of octets
+        response = &response[3..]; // move slice start to exclude previously obtained data
+
+        let mut name = String::new();
 
         // start from the first array of characters
-        response[3..].iter()
+        response[..].iter()
             .take((answer_size - 2) as usize) // ignore NULL-terminator
             .for_each(|&b| {
                 if word_size == 0 {
