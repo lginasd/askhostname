@@ -106,8 +106,8 @@ impl App {
         };
         if let Some(new_timeout) = args.timeout {
             match new_timeout {
-                0..=100 => { eprintln!("The selected timeout may be too low for reciving answers")},
-                5000.. =>  { eprintln!("The selected timeout may be too big and scanning may be slow")},
+                0 ..= net::TOO_LOW_TIMEOUT_WARNING_MS => { eprintln!("The selected timeout may be too low for reciving answers")},
+                net::TOO_BIG_TIMEOUT_WARNING_MS.. =>  { eprintln!("The selected timeout may be too big and scanning may be slow")},
                 _ => {}
             }
             if let Err(e) = net::set_timeout_from_millis(new_timeout) {

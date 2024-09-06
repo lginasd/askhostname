@@ -7,8 +7,11 @@ use nbns::NbnsAnswer;
 use std::net::{UdpSocket, IpAddr};
 
 
-pub static mut TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 pub const RECV_BUFF_SIZE: usize = 256;
+pub const TOO_LOW_TIMEOUT_WARNING_MS: u64 = 100;
+pub const TOO_BIG_TIMEOUT_WARNING_MS: u64 = 3500;
+const DEFAULT_TIMEOUT_MS: u64 = 500;
+pub static mut TIMEOUT: std::time::Duration = std::time::Duration::from_millis(DEFAULT_TIMEOUT_MS);
 
 // DOMAIN NAMES - IMPLEMENTATION and SPECIFICATION  https://www.rfc-editor.org/rfc/rfc883
 // DOMAIN NAMES - CONCEPTS AND FACILITIES           https://www.rfc-editor.org/rfc/rfc1034
