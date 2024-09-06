@@ -190,7 +190,7 @@ impl App {
             let wait = self.args.wait;
             let verbose = self.args.verbose;
             let err_vec = errors.clone();
-            rt.spawn(async move { // NOTE: will ignore all errors
+            rt.spawn_blocking(move || {
                 if let Err(e) = Self::query_and_out(addr, b, wait, verbose) {
                     err_vec.lock().unwrap().push((addr, e));
                 };
